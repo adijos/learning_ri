@@ -30,8 +30,9 @@ class RIImages:
         self.b = b # number of basis elements to learn
         self.basis = np.random.rand(N,b)
         self.alphabet = gen_pixelv()
-
         self.RI_letters = self.generate_letter_id_vectors(self.N,self.k, self.alphabet)
+
+        self.representations = None
 
     def image_vectorize(self, image, window=0):
 
@@ -87,23 +88,36 @@ class RIImages:
             for i in xrange(self.b):
                 self.basis[:,i] = np.reshape(self.basis[:,i],(1,self.N))/np.linalg.norm(self.basis[:,i])
 
-            self.basis[self.basis < eps] = 0
+            #self.basis[self.basis < eps] = 0
 
         return 
 
     def find_reps(self,lim=0, max_iter=100,pixel_m=28, pixel_n=28, window=None):
         if not window: print "no window size specified"; return;
-        representations = {}
+        representations = np.zeros((self.b,pixel_m, pixel_n))
+
+        # normalize basis in case
         for i in xrange(self.b):
-            representations[alphabet[i]] = [np.random.rand(pixel_m,pixel_n)]
+            self.basis[:,i] = np.reshape(self.basis[:,i],(1,self.N))/np.linalg.norm(self.basis[:,i])
 
-        random_matrix = np.random.rand(pixel_m,pixel_n)
-        image_vec = self.image_vectorize(random_matrix, window=window)
-        cosangles = image_vec.dot(self.basis)
+        for i in trange(max_iter):
+            random_matrix = np.random.rand(pixel_m,pixel_n)
+            image_vec = self.image_vectorize(random_matrix, window=window)
+            cosangles = image_vec.dot(self.basis)
+            rep_basis = np.argmax(cosangles)
+            coslist = cosangles.tolist()[0]
+            representations[rep_basis,:,:] = np.reshape(representations[rep_basis,:],(pixel_m, pixel_n)) + coslist[rep_basis]*random_matrix
 
-        rep_basis = np.argmax(cosangles)
-        representations[str(rep_basis)] += cosangles[rep_basis]*random_matrix
+        self.representations = representations
         return representations
+
+    def flatten_reps(self):
+        if self.representations==None: return;
+        b,m,n = self.representations.shape
+        flattened_reps = np.zeros((self.b,m*n))
+        for i in xrange(self.b):
+            flattened_reps[i,:] = self.representations[i,:,:].flatten()
+        return flattened_reps
 
     def generate_letter_id_vectors(self, N, k, alph):
         # build row-wise k-sparse random index matrix

@@ -57,33 +57,34 @@ def vector_cosine(a,b):
 	b_norm = b / np.linalg.norm(b)
 	return a_norm.dot(b_norm)
 
-def cosangles(lang_vectors,languages,display=0):
-		# measures the cosine angle of the given "lang_vectors" and labels them with "language"
+def cosangles(lang_vectors,languages=None,display=0):
+    # measures the cosine angle of the given "lang_vectors" and labels them with "language"
 
-		# number of languages
-		num_lang,N = lang_vectors.shape
+    # number of languages
+    num_lang,N = lang_vectors.shape
 
-		# normalize vectors
-		lang_vectors_normd = np.zeros(lang_vectors.shape)
-		for i in xrange(num_lang):
-				lang_vectors_normd[i,:] = lang_vectors[i,:]/np.linalg.norm(lang_vectors[i,:])
+    # normalize vectors
+    lang_vectors_normd = np.zeros(lang_vectors.shape)
+    for i in xrange(num_lang):
+                    lang_vectors_normd[i,:] = lang_vectors[i,:]/np.linalg.norm(lang_vectors[i,:])
 
-		# cosine angles for similarity!
-		cos_angles = lang_vectors_normd.dot(lang_vectors_normd.T)
+    # cosine angles for similarity!
+    cos_angles = lang_vectors_normd.dot(lang_vectors_normd.T)
 
-		# label the cosine angles table
-		labeled_cosangles = pd.DataFrame(cos_angles, index=languages, columns=languages)
+    # label the cosine angles table
+    if languages:
+        labeled_cosangles = pd.DataFrame(cos_angles, index=languages, columns=languages)
 
-		#print labeled_cosangles
-		if display:
+    #print labeled_cosangles
+    if display:
 
-				# calculate angles
-				acos_angles = np.arccos(cos_angles)
-				acos_angles[np.isnan(acos_angles)] = 0
-				acos_angles[acos_angles < 1e-5] = 0
+                    # calculate angles
+                    acos_angles = np.arccos(cos_angles)
+                    acos_angles[np.isnan(acos_angles)] = 0
+                    acos_angles[acos_angles < 1e-5] = 0
 
-				display_graph(acos_angles, languages)
-		return cos_angles
+                    display_graph(acos_angles, languages)
+    return cos_angles
 
 def display_graph(similarity, languages):
 		# display network of languages
