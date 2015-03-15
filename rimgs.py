@@ -27,9 +27,10 @@ class RIImages:
         self.N = N # N-dimensional space
         self.k = k # 2k sparse vector
         self.b = b # number of basis elements to learn
-        self.basis = 0.01*np.random.rand(N,b)
+        self.basis = np.random.rand(N,b)
         self.alphabet = gen_pixelv()
         self.RI_letters = self.generate_letter_id_vectors(self.N,self.k, self.alphabet)
+        self.sampled_pixelw = []
 
         self.representations = None
 
@@ -43,107 +44,124 @@ class RIImages:
                 best_k = k
         return best_k
 
-    def image_vectorize(self, image, window=0):
+    def extract_pixelw(self, image, window=0):
+    # image-extract pixel window
 
         m,n = image.shape
         # total
         image_vec = np.zeros((1, self.N))
         # pad image
         padded_img = np.lib.pad(image,window,mode='constant')
-        # iterate over pixels
-        for i in xrange(window,window+m):
-            if i != 14: continue
-            for j in xrange(window,window+n):
-                if (j != 13): continue
-                # pixel is (i,j)
-                #print (i,j)
-                if window == 0:
-                    image_vec += self.RI_letters[padded_img[i,j]]
-                pixelw = padded_img[i-window:i+window + 1, j-window:j+window+1]
-                #print pixelw
-                x_sz,y_sz =  pixelw.shape
-                fl_x = int(np.floor(x_sz/2))
-                fl_y = int(np.floor(y_sz/2))
-                flat_pixelw = pixelw.flatten()
-                #print flat_pixelw
-                pixnum = len(flat_pixelw)
-                pix_vec = np.ones((1,self.N))
-                orig = np.array([0,1])
-                orig_z = np.array([0,1,0])
 
-                # complicated angle encoding on complex plane of pixel relations
-                for x in xrange(-fl_x, x_sz - fl_x):
-                    for y in xrange(-fl_y, y_sz - fl_y):
+        # randomly choose pixel window
+        i = np.random.randint(window, high=window+m)
+        j = np.random.randint(window, high=window+n)
+        pixelw = padded_img[i-window:i+window + 1, j-window:j+window+1]
 
-                        if x == 0 and y == 0: continue
+        self.sampled_pixelw.append(pixelw)
 
-                        # calculate vector angles by dot product
-                        pixel_vec = np.array([x,y])
-                        #print orig, pixel_vec
-                        pixel_vec_z = np.array([x,y,0])
-                        pixel_vec_normed = pixel_vec/np.linalg.norm(pixel_vec)
+        return pixelw
 
-                        # use cross product to orient arccos angle correctly [0,2pi]
-                        cross = np.cross(orig_z, pixel_vec_z)
-                        cosangle = pixel_vec_normed.dot(orig)
-                        angle = np.arccos(cosangle)
-                        if cross[2] < 0:
-                            angle = -angle
-                        if angle < 0:
-                            angle = angle + 2*np.pi
 
-                        #print 'cosangle', cosangle,'angle', angle,'cross', cross
+    def pixelw_vectorize(self, pixelw, window=0):
+    # pixel_window vectorize
 
-                        # find nearest angle
-                        shift = self.nearest_k(angle)
-                        #print shift
-                        pixy = self.RI_letters[pixelw[x,y],:]
-                        pix_vec = np.roll(pixy,shift)
+        if window == 0:
+            # TEST
+            self.RI_letters[pixelw]
 
-                '''
-                # just sequentially shifting, no angle encoding
-                for shift in xrange(-pixnum/2+1, pixnum/2):
-                    #print flat_pixelw[pix_idx]
-                    pixy = self.RI_letters[flat_pixelw[pix_idx], :]
-                    #print 'pixy', shift
-                    #print pixy
-                    pix_vec *= np.roll(pixy,shift)
-                    pix_idx += 1
-                '''
-                #print pix_vec
-                #print pix_vec.shape
-                #print "~~~~~~~~~~~~~~~~"
+        #print pixelw
+        # useful size constants
+        x_sz,y_sz =  pixelw.shape
+        fl_x = int(np.floor(x_sz/2))
+        fl_y = int(np.floor(y_sz/2))
 
-                image_vec += pix_vec
-        return image_vec
+        # vector initializations
+        pixelw_vec = np.zeros((1, self.N))
+        pix_vec = np.ones((1,self.N))
+        orig = np.array([0,1])
+        orig_z = np.array([0,1,0])
 
-    def learn_basis(self, image_set, eps=10e-8, window=None):
+        # complicated angle encoding on complex plane of pixel relations
+        for x in xrange(-fl_x, x_sz - fl_x):
+            for y in xrange(-fl_y, y_sz - fl_y):
+
+                if x == 0 and y == 0:
+                    pixelw_vec += self.RI_letters[pixelw[x,y],:]
+
+                # calculate vector angles by dot product
+                pixel_vec = np.array([x,y])
+                #print orig, pixel_vec
+                pixel_vec_z = np.array([x,y,0])
+                pixel_vec_normed = pixel_vec/np.linalg.norm(pixel_vec)
+
+                # use cross product to orient arccos angle correctly [0,2pi]
+                cross = np.cross(orig_z, pixel_vec_z)
+                cosangle = pixel_vec_normed.dot(orig)
+                angle = np.arccos(cosangle)
+                if cross[2] < 0:
+                    angle = -angle
+                if angle < 0:
+                    angle = angle + 2*np.pi
+
+                #print 'cosangle', cosangle,'angle', angle,'cross', cross
+
+                # find nearest angle
+                shift = self.nearest_k(angle)
+                #print shift
+
+                pixy = self.RI_letters[pixelw[x,y],:]
+                pix_vec = np.roll(pixy,shift)
+
+                pixelw_vec += pix_vec
+
+        return pixelw_vec
+
+
+    def learn_basis(self, image_set, eps=10e-8, window=None, sample_num=1000):
         if not window: print "no window size specified"; return;
 
         num_imgs, m, n = image_set.shape
+        for k in trange(sample_num):
 
-        for k in trange(num_imgs):
+            #image_vec = self.image_vectorize(image_set[k,:,:], window=window)
+            #image_vec = image_vec/np.linalg.norm(image_vec)
+            # select random image number
+            img_num = np.random.randint(0,high=10)
+            #print "sample: ", k, "; image: ", img_num
 
-            image_vec = self.image_vectorize(image_set[k,:,:], window=window)
-            image_vec = image_vec/np.linalg.norm(image_vec)
-            weights = image_vec.dot(self.basis)
+            # random index random pixel window in image
+            pixelw = self.extract_pixelw(image_set[img_num,:,:], window=window)
+            pixelw_vec = self.pixelw_vectorize(pixelw, window=window)
+
+            #find weights with relation to pixelw vector
+            weights = pixelw_vec.dot(self.basis)
+
+            # make 1 where max and 0 otherwise
+            maxy = (weights == np.max(weights))
+            maxed_weights = maxy*weights
+            maxed_weights[maxed_weights != 0] = 1
 
             for i in xrange(self.b):
-                self.basis[:,i] = np.reshape(self.basis[:,i],(1,self.N)) +  weights[0][i]*image_vec
+                self.basis[:,i] = np.reshape(self.basis[:,i],(1,self.N)) +  maxed_weights[0][i]*pixelw_vec
 
             # normalize basis
             for i in xrange(self.b):
                 self.basis[:,i] = np.reshape(self.basis[:,i],(1,self.N))/np.linalg.norm(self.basis[:,i])
 
+            # hard threshold basis values
             #self.basis[self.basis < eps] = 0
 
         return
 
-    def find_reps(self, image_set=None, lim=0, max_iter=100,pixel_m=28, pixel_n=28, window=None):
+    def find_reps(self, image_set=None, lim=0, max_iter=100, window=None):
         """ find_reps means finds pixel representations of high dimensional basis vectors!"""
 
         if not window: print "no window size specified"; return;
-        representations = np.zeros((self.b,pixel_m, pixel_n))
+
+        m = 2*window+1
+        n = 2*window+1
+        representations = 0.01*np.random.rand(self.b, m, n)
 
         # normalize basis in case
         for i in xrange(self.b):
@@ -153,24 +171,24 @@ class RIImages:
             random = 1
         else:
             random = 0
-            num_imgs, m, n = image_set.shape
 
             # limits iterations by number of images if image_set is defined
-            if num_imgs < max_iter:
-                max_iter = num_imgs
 
         for i in trange(max_iter):
 
             if random:
-                img = np.random.rand(m,n)
+                pixelw = np.random.rand(m,n)
             else:
-                img = image_set[i,:,:]
+                img_num = np.random.randint(0,high=10)
+                img = image_set[img_num,:,:]
+                pixelw = self.extract_pixelw(img, window=window)
 
-            image_vec = self.image_vectorize(img, window=window)
-            cosangles = image_vec.dot(self.basis)
+            pixelw_vec = self.pixelw_vectorize(pixelw, window=window)
+            cosangles = pixelw_vec.dot(self.basis)
             rep_basis = np.argmax(cosangles)
             coslist = cosangles.tolist()[0]
-            representations[rep_basis,:,:] = np.reshape(representations[rep_basis,:],(pixel_m, pixel_n)) + coslist[rep_basis]*img
+            #print coslist
+            representations[rep_basis,:,:] = np.reshape(representations[rep_basis,:],(m, n)) + coslist[rep_basis]*pixelw
 
         self.representations = representations
         return representations
